@@ -70,14 +70,16 @@ PYTHONPATH=src python -m leader_teleop.teleoperate \
 ## 데이터 수집 (record)
 
 텔레옵과 같은 인자 체계에 `--dataset.*`가 더해진다. 카메라는
-`--robot.cameras`로 등록한다 (lerobot 표준).
+`--robot.cameras`로 등록한다 (lerobot 표준). 아래 예시는 상단 1대 +
+양쪽 손목 2대 구성. `index_or_path`는 PC마다 다르니
+`v4l2-ctl --list-devices`로 먼저 확인한다.
 
 ```bash
 PYTHONPATH=src python -m leader_teleop.record \
 	--robot.type=bi_so101_follower --robot.id=bi_so101_follower \
 	--robot.left_arm_port=/dev/ttyACM0 \
 	--robot.right_arm_port=/dev/ttyACM1 \
-	--robot.cameras='{"top": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}}' \
+	--robot.cameras='{"top": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "left_wrist": {"type": "opencv", "index_or_path": 2, "width": 640, "height": 480, "fps": 30}, "right_wrist": {"type": "opencv", "index_or_path": 4, "width": 640, "height": 480, "fps": 30}}' \
 	--teleop.type=bi_so101_leader --teleop.id=bi_so101_leader \
 	--teleop.left_arm_port=/dev/ttyACM2 \
 	--teleop.right_arm_port=/dev/ttyACM3 \
