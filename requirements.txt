@@ -4,3 +4,4 @@
 lerobot[feetech,viz,dataset]==0.6.0
 numpy==2.2.6  # 수치 계산 (카메라 헤드 궤적)
 pynput==1.8.2  # record 키보드 에피소드 제어 + keyboard 헤드 모드
+mujoco==3.12.0  # SO-101 시뮬레이션 뷰어·디지털 트윈 (src/mujoco_sim)
