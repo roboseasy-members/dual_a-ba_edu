@@ -57,10 +57,18 @@ from .robots import BiFollowerBase, BiFollowerBaseConfig, BiSo101FollowerConfig
 
 logger = logging.getLogger(__name__)
 
-# 카메라 읽기 실패(타임아웃 등)를 직전 관측 재사용으로 버티는 연속 횟수.
-# 카메라 async_read 타임아웃이 200ms라 5회면 약 1초. 넘으면 카메라가
-# 죽은 것으로 보고 host를 종료한다. 재사용 구간의 관측은 중복 프레임이다.
-MAX_CONSECUTIVE_OBSERVATION_FAILURES: Final[int] = 5
+# 관측 읽기 실패(카메라 타임아웃, 버스 응답 없음)를 직전 관측 재사용으로
+# 버티는 연속 횟수. 카메라 타임아웃(200ms)이면 약 2초, 버스 글리치(수십
+# ms)면 1초 미만에 해당한다. 넘으면 장애로 보고 host를 종료한다.
+# 재사용 구간의 관측은 중복 프레임이다.
+MAX_CONSECUTIVE_OBSERVATION_FAILURES: Final[int] = 10
+# 명령 전송(버스 쓰기) 실패를 건너뛰며 버티는 연속 횟수. 30Hz 루프 기준
+# 약 0.5초. 첫 명령 순간의 전류 피크로 버스가 잠깐 침묵하는 경우를 넘긴다.
+MAX_CONSECUTIVE_COMMAND_FAILURES: Final[int] = 15
+# 일시적 오류로 취급해 재시도할 예외. 그 밖의 예외는 즉시 종료한다.
+TRANSIENT_ERRORS: Final[tuple[type[BaseException], ...]] = (
+	TimeoutError, RuntimeError, ConnectionError,
+)
 # 루프 주기 통계를 집계·보고하는 간격 (s).
 LOOP_RATE_REPORT_INTERVAL_S: Final[float] = 5.0
 # 실측 주기가 목표의 이 비율 아래면 경고한다.
@@ -90,6 +98,46 @@ class HostAppConfig(TeleopStackConfig):
 def _raise_keyboard_interrupt(signum: int, frame: FrameType | None) -> None:
 	"""SIGTERM/SIGHUP을 Ctrl+C와 같은 정리 경로로 보낸다."""
 	raise KeyboardInterrupt(f'signal {signum}')
+
+
+class TransientFailureGuard:
+	"""연속 실패 횟수를 세어 일시적 오류와 지속 장애를 구분한다.
+
+	Attributes:
+		limit: 허용하는 최대 연속 실패 횟수. 넘으면 예외를 다시 던진다.
+		label: 로그에 표시할 대상 이름.
+		count: 현재 연속 실패 횟수.
+	"""
+
+	def __init__(self, limit: int, label: str) -> None:
+		self.limit = limit
+		self.label = label
+		self.count = 0
+
+	def record_failure(self, error: BaseException) -> None:
+		"""실패 1회를 기록한다. 한도를 넘으면 원래 예외를 다시 던진다.
+
+		첫 실패에만 경고를 남겨 로그가 넘치지 않게 한다.
+
+		Raises:
+			BaseException: 연속 실패가 limit를 넘었을 때 넘겨받은 error.
+		"""
+		self.count += 1
+		if self.count > self.limit:
+			raise error
+		if self.count == 1:
+			logger.warning(
+				f'{self.label} failed ({error}) - tolerating up to '
+				f'{self.limit} consecutive failures.'
+			)
+
+	def reset(self) -> None:
+		"""성공 시 호출. 실패 뒤 복구였으면 알린다."""
+		if self.count:
+			logger.info(
+				f'{self.label} recovered after {self.count} failure(s).'
+			)
+		self.count = 0
 
 
 def _is_valid_command(action: Any) -> bool:
@@ -131,6 +179,12 @@ class RobotHost:
 		self._observation_socket.setsockopt(zmq.CONFLATE, 1)
 		self._is_shutdown_done = False
 		self._has_warned_bad_command = False
+		self._observation_guard = TransientFailureGuard(
+			MAX_CONSECUTIVE_OBSERVATION_FAILURES, 'Observation read'
+		)
+		self._command_guard = TransientFailureGuard(
+			MAX_CONSECUTIVE_COMMAND_FAILURES, 'Command send'
+		)
 		# 루프 주기 통계 (LOOP_RATE_REPORT_INTERVAL_S마다 집계).
 		self._rate_window_start = 0.0
 		self._rate_window_iterations = 0
@@ -155,7 +209,6 @@ class RobotHost:
 		camera_keys = tuple(self.robot.cameras)
 		dt_nominal = 1.0 / self.config.host.fps
 		last_observation: dict[str, Any] | None = None
-		consecutive_failures = 0
 		sequence = 0
 		is_client_receiving: bool | None = None
 		self._rate_window_start = time.perf_counter()
@@ -170,24 +223,16 @@ class RobotHost:
 
 				self._apply_latest_command()
 
-				# 카메라 한 대의 일시적 타임아웃으로 host 전체가 죽지 않게
-				# 직전 관측을 재사용한다. 연속 실패가 길어지면 종료한다.
+				# 카메라 타임아웃이나 버스 응답 없음 한 번으로 host 전체가
+				# 죽지 않게 직전 관측을 재사용한다. 연속 실패가 한도를
+				# 넘으면 장애로 보고 종료한다.
 				try:
 					last_observation = self.robot.get_observation()
-					consecutive_failures = 0
-				except (TimeoutError, RuntimeError) as error:
-					consecutive_failures += 1
-					if (
-						last_observation is None
-						or consecutive_failures
-						> MAX_CONSECUTIVE_OBSERVATION_FAILURES
-					):
+					self._observation_guard.reset()
+				except TRANSIENT_ERRORS as error:
+					if last_observation is None:
 						raise
-					if consecutive_failures == 1:
-						logger.warning(
-							f'Observation read failed ({error}) - reusing '
-							'the last observation.'
-						)
+					self._observation_guard.record_failure(error)
 
 				sequence += 1
 				message = encode_observation(
@@ -218,8 +263,9 @@ class RobotHost:
 	def _apply_latest_command(self) -> None:
 		"""도착한 최신 명령을 검증해 로봇에 보낸다 (없으면 자세 유지).
 
-		형식이 틀린 명령은 버리고(1회 경고), 모터 통신 예외는 삼키지 않고
-		전파해 host가 정리 경로(홈포즈 복귀·토크 해제)로 빠지게 한다.
+		형식이 틀린 명령은 버리고(1회 경고), 모터 통신 예외는 연속 한도
+		안에서는 건너뛰고 한도를 넘으면 전파해 host가 정리 경로(홈포즈
+		복귀·토크 해제)로 빠지게 한다.
 		"""
 		try:
 			message = self._cmd_socket.recv_string(zmq.NOBLOCK)
@@ -235,8 +281,15 @@ class RobotHost:
 				logger.error(f'Bad command dropped: {error}')
 			return
 		self._has_warned_bad_command = False
-		if action:
+		if not action:
+			return
+		# 버스 쓰기 실패(전류 피크로 인한 순간 침묵 등)는 이번 명령을
+		# 건너뛰고 다음 명령으로 넘어간다. 지속되면 종료한다.
+		try:
 			self.robot.send_action(action)
+			self._command_guard.reset()
+		except ConnectionError as error:
+			self._command_guard.record_failure(error)
 
 	def _track_loop_rate(self, loop_start: float) -> None:
 		"""루프 실측 주기를 집계하고 목표에 못 미치면 경고한다."""
