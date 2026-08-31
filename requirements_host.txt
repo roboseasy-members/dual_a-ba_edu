@@ -1,0 +1,6 @@
+# 라즈베리파이 host 전용 의존성 (Python 3.12 이상 - lerobot 0.6.0 요구)
+# 설치 순서: torch CPU 전용 wheel을 먼저 깔아야 CUDA 패키지가 딸려오지 않는다.
+#   pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements_host.txt
+lerobot[feetech]==0.6.0  # 모터 통신 + 카메라(opencv-python-headless 포함)
+pyzmq==27.1.0  # PC client와의 ZMQ 통신
