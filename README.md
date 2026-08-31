@@ -107,13 +107,22 @@ PC (teleoperate/record + 리더암 2대)  <-- ZMQ 5555/5556 -->  Pi (host + 팔�
 
 ### 1. 파이 준비 (최초 1회)
 
-파이에도 이 레포와 의존성을 설치합니다. 카메라 인덱스는 파이에서
-`v4l2-ctl --list-devices`로 확인합니다.
+Raspberry Pi OS 64-bit, **Python 3.12 이상**이 필요합니다(lerobot 0.6.0
+요구 사양). Bookworm 기본 Python은 3.11이라 그대로는 설치가 안 됩니다 —
+pyenv/uv로 3.12를 넣거나 3.12 이상이 기본인 배포판을 쓰세요(이 절차는
+3.12에서 확인했습니다). 시스템 pip는 막혀 있으므로 venv를 씁니다. torch는
+CPU 전용 wheel을 먼저 설치해야 쓸모없는 CUDA 패키지가 딸려오지 않습니다.
 
 ```bash
+sudo apt update && sudo apt install -y python3-venv git v4l-utils
 git clone <레포 URL> && cd dual_a-ba_edu
-pip install -r requirements.txt
+python3 -m venv ~/.venvs/dual_edu && source ~/.venvs/dual_edu/bin/activate
+pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements_host.txt      # lerobot[feetech] + pyzmq만 (mujoco·rerun 제외)
+sudo usermod -aG dialout $USER            # 시리얼 권한, 재로그인 필요
 ```
+
+카메라 인덱스는 파이에서 `v4l2-ctl --list-devices`로 확인합니다.
 
 ### 2. 파이에서 host 실행
 
@@ -129,7 +138,12 @@ PYTHONPATH=src python -m leader_teleop.host \
 ```
 
 `Waiting for client...`가 뜨면 준비 완료입니다. 이 터미널은 그대로
-둡니다.
+둡니다. SSH가 끊기면 host는 정리(홈포즈 복귀·토크 해제)를 시도한 뒤
+종료됩니다 — 끊김 상황의 정리는 실기로 검증하지 않았으니, 수업처럼
+장시간 운용이면 `tmux` 안에서 띄워 SSH와 host의 수명을 분리하세요.
+안전 여유가 필요하면 `--robot.max_relative_target=5`(전송 1회당 관절
+이동 상한, deg)를 추가합니다 — 대신 명령마다 현재 위치를 읽어 지연이
+조금 늘어납니다.
 
 ### 3. PC에서 텔레옵 / 데이터 수집
 
@@ -162,16 +176,33 @@ PYTHONPATH=src python -m leader_teleop.record \
 ### 동작 규칙
 
 - PC와 파이는 같은 네트워크에 있어야 하고, 파이의 5555/5556 포트가
-  열려 있어야 합니다 (`--host.port_zmq_cmd` / `--host.port_zmq_observations`
-  로 변경 가능).
-- 머리 모터가 있는 구성이면 `--camera_head.mode`를 **양쪽에 같게**
-  줍니다. 어긋나면 PC 쪽에서 키 불일치 경고가 납니다.
+  열려 있어야 합니다. 포트를 바꾸면 파이 `--host.port_zmq_cmd` /
+  `--host.port_zmq_observations`와 PC `--robot.port_zmq_cmd` /
+  `--robot.port_zmq_observations`를 **함께** 바꿉니다.
+- 인증이 없으므로 같은 LAN의 누구나 명령을 보낼 수 있습니다. 수업용
+  폐쇄망에서만 쓰세요.
+- 머리 모터가 있는 구성이면 host에 `--camera_head.mode=fixed`, PC에
+  원하는 모드(`fixed`/`keyboard`)를 줍니다(host는 장착 여부만 봅니다).
+  한쪽만 `none`이면 PC 쪽에서 키 불일치 경고가 납니다.
 - PC 프로그램을 끝내도(Ctrl+C/Esc) 팔은 마지막 자세를 유지합니다.
-  홈포즈 복귀와 토크 해제는 **파이 host를 Ctrl+C**로 끝낼 때 일어납니다.
-- 영상이 끊기면 `--host.fps=15`나 `--host.jpeg_quality=60`으로 전송량을
-  줄여 보세요 (기본 30fps / 품질 80).
+  홈포즈 복귀와 토크 해제는 **파이 host를 끝낼 때**(Ctrl+C, SIGTERM,
+  SSH 끊김) 일어납니다.
+- host 관측이 1초 이상 끊기면 PC 쪽이 오류로 멈춥니다(`stale_timeout_s`,
+  기본 1.0). 멈춘 host의 오래된 프레임이 데이터셋에 기록되는 것을 막기
+  위한 동작입니다. 끊긴 원인(host 종료, WiFi)을 해결하고 다시 시작하세요.
+- 카메라 3대 640×480 30fps는 약 40Mbps입니다. 유선 또는 5GHz WiFi를
+  권장하고, 끊기면 `--host.fps=15`나 `--host.jpeg_quality=60`으로
+  전송량을 줄입니다. host 루프가 목표 주기를 못 채우면 경고 로그가
+  납니다.
+- PC 쪽 카메라 해상도가 host와 다르면 연결 시점에 오류로 알려줍니다.
+- host의 카메라 한 대가 잠시 멈추면(읽기 타임아웃) 직전 관측을 재사용해
+  최대 약 1초까지 버팁니다. 이 구간의 프레임은 중복이며, 1초를 넘기면
+  host가 정리 후 종료됩니다.
 - 캘리브레이션 파일은 로봇이 붙은 쪽(파이)에 저장됩니다. PC 쪽
   client는 캘리브레이션을 하지 않습니다.
+- 이 구성으로 수집한 데이터셋의 `robot_type`은 `bi_so101_client`로
+  기록됩니다. 직접 연결로 만든 데이터셋(`bi_so101_follower`)을 client로
+  `--resume`하면 타입 불일치로 거부됩니다.
 
 ## 카메라 헤드 (선택)
 
@@ -209,7 +240,7 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 | 팔 + 머리 합성 텔레옵 | `teleoperators/combined_teleop.py` |
 | 카메라 헤드 모드 | `head/head_modes.py` |
 | 연결 재시도 (간헐 통신 글리치 흡수) | `hardware_retry.py` |
-| 라즈베리파이 host / PC client / 직렬화 | `host.py` / `robots/bi_follower_client.py` / `remote_codec.py` |
+| 라즈베리파이 host / PC client / 직렬화 | `host.py` / `robots/bi_follower_client.py` / `remote_codec.py` (파이 의존성: `requirements_host.txt`) |
 | 하드웨어 점검 / 홈포즈 캡처 | `scripts/check_robot.py` / `scripts/capture_home_pose.py` |
 
 ## 안전 주의

@@ -23,6 +23,9 @@ from itertools import chain
 from typing import Any, ClassVar
 
 from lerobot.cameras import CameraConfig
+# --robot.cameras의 type='opencv'는 이 설정 클래스가 임포트돼야 draccus
+# 선택지로 등록된다 (lerobot record 스크립트와 같은 이유의 명시 임포트).
+from lerobot.cameras.opencv import OpenCVCameraConfig  # noqa: F401
 from lerobot.cameras.utils import make_cameras_from_configs
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 from lerobot.motors.feetech import FeetechMotorsBus, OperatingMode
