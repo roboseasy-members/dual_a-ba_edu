@@ -291,12 +291,15 @@ def serve(cfg: HostAppConfig) -> None:
 		cfg: CLI에서 파싱된 실행 설정.
 	"""
 	init_logging()
-	logging.info(pformat(asdict(cfg)))
 	# setup()(캘리브레이션 대기·토크 ON) 중에도 SIGTERM/SSH 끊김이 정리
 	# 경로를 타도록 로봇을 만들기 전에 등록한다 (메인 스레드).
 	signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
 	signal.signal(signal.SIGHUP, _raise_keyboard_interrupt)
-	RobotHost(cfg).setup().run()
+	host = RobotHost(cfg)
+	# RobotHost가 --camera_head.mode로 has_head_motors를 확정한 뒤에
+	# 찍어야 로그의 설정값이 실제 적용값과 같다.
+	logging.info(pformat(asdict(cfg)))
+	host.setup().run()
 
 
 def main() -> None:

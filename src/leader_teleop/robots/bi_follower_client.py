@@ -22,6 +22,8 @@ send_action이 DeviceNotConnectedError를 던져 루프를 멈춥니다. 멈춘 
 계속 보내는 상황을 막기 위해서입니다.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import math
@@ -32,7 +34,6 @@ from functools import cached_property
 from typing import Any, ClassVar, Final
 
 import numpy as np
-import zmq
 
 from lerobot.cameras import CameraConfig
 from lerobot.robots.config import RobotConfig
@@ -50,6 +51,14 @@ from ..remote_codec import (
 from .bi_follower_base import BiFollowerBase
 from .bi_so101_follower import BiSo101Follower
 from .bi_so102_follower import BiSo102Follower
+
+# pyzmq는 원격 클라이언트를 실제로 쓸 때만 필요하다. 여기서 실패시키면
+# 직접 연결(bi_so101_follower)만 쓰는 환경까지 패키지 임포트가 깨지므로,
+# 없으면 클라이언트 생성 시점에 안내와 함께 실패한다.
+try:
+	import zmq
+except ImportError:  # pragma: no cover - 환경 의존
+	zmq = None  # type: ignore[assignment]
 
 
 logger = logging.getLogger(__name__)
@@ -91,6 +100,12 @@ class BiFollowerClient(Robot):
 	follower_class: ClassVar[type[BiFollowerBase]]
 
 	def __init__(self, config: BiFollowerClientConfig) -> None:
+		if zmq is None:
+			raise ImportError(
+				'pyzmq is required for the remote client '
+				f'({config.type}). Install it with: pip install '
+				'pyzmq==27.1.0  (included in requirements.txt)'
+			)
 		super().__init__(config)
 		self.config = config
 		# record.py가 이미지 라이터 스레드 수를 len(robot.cameras)로
