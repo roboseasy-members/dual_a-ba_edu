@@ -8,14 +8,28 @@
 """
 
 from .bi_follower_base import BiFollowerBase, BiFollowerBaseConfig
+from .bi_follower_client import (
+	BiFollowerClient,
+	BiFollowerClientConfig,
+	BiSo101Client,
+	BiSo101ClientConfig,
+	BiSo102Client,
+	BiSo102ClientConfig,
+)
 from .bi_so101_follower import BiSo101Follower, BiSo101FollowerConfig
 from .bi_so102_follower import BiSo102Follower, BiSo102FollowerConfig
 
 __all__ = [
 	'BiFollowerBase',
 	'BiFollowerBaseConfig',
+	'BiFollowerClient',
+	'BiFollowerClientConfig',
 	'BiSo101Follower',
+	'BiSo101Client',
+	'BiSo101ClientConfig',
 	'BiSo101FollowerConfig',
 	'BiSo102Follower',
+	'BiSo102Client',
+	'BiSo102ClientConfig',
 	'BiSo102FollowerConfig',
 ]

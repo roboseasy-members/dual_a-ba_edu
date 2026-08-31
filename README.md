@@ -94,6 +94,85 @@ PYTHONPATH=src python -m leader_teleop.record \
 record 중 `Ctrl+C`는 진행 중인 에피소드를 버립니다. 종료는 `Esc`로
 하세요.
 
+## 라즈베리파이 분리 구성 (host / client)
+
+팔로워 2대와 카메라를 **라즈베리파이**에, 리더암 2대를 **PC**에 꽂는
+구성입니다. 파이에서 `host`를 띄우면 로봇이 네트워크로 노출되고, PC의
+`teleoperate` / `record`는 로봇 타입만 `bi_so101_client`로 바꾸면 그대로
+동작합니다.
+
+```
+PC (teleoperate/record + 리더암 2대)  <-- ZMQ 5555/5556 -->  Pi (host + 팔로워 2대 + 카메라 3대)
+```
+
+### 1. 파이 준비 (최초 1회)
+
+파이에도 이 레포와 의존성을 설치합니다. 카메라 인덱스는 파이에서
+`v4l2-ctl --list-devices`로 확인합니다.
+
+```bash
+git clone <레포 URL> && cd dual_a-ba_edu
+pip install -r requirements.txt
+```
+
+### 2. 파이에서 host 실행
+
+PC에서 `ssh <사용자>@<파이 IP>`로 들어간 뒤 실행합니다. 첫 실행에서
+캘리브레이션 프롬프트가 뜨면 안내대로 진행합니다.
+
+```bash
+PYTHONPATH=src python -m leader_teleop.host \
+	--robot.type=bi_so101_follower --robot.id=bi_so101_follower \
+	--robot.left_arm_port=/dev/ttyACM0 \
+	--robot.right_arm_port=/dev/ttyACM1 \
+	--robot.cameras='{"top": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "left_wrist": {"type": "opencv", "index_or_path": 2, "width": 640, "height": 480, "fps": 30}, "right_wrist": {"type": "opencv", "index_or_path": 4, "width": 640, "height": 480, "fps": 30}}'
+```
+
+`Waiting for client...`가 뜨면 준비 완료입니다. 이 터미널은 그대로
+둡니다.
+
+### 3. PC에서 텔레옵 / 데이터 수집
+
+`--robot.type=bi_so101_client` + `--robot.remote_ip=<파이 IP>`로
+바꿉니다. **PC 쪽 `--robot.cameras`는 이름과 해상도만 쓰이므로** host와
+같은 값을 주되 `index_or_path`는 아무 값이나 됩니다 (PC가 카메라를 열지
+않습니다).
+
+```bash
+# 텔레옵만
+PYTHONPATH=src python -m leader_teleop.teleoperate \
+	--robot.type=bi_so101_client --robot.remote_ip=<파이 IP> \
+	--teleop.type=bi_so101_leader --teleop.id=bi_so101_leader \
+	--teleop.left_arm_port=/dev/ttyACM0 \
+	--teleop.right_arm_port=/dev/ttyACM1
+
+# 데이터 수집
+PYTHONPATH=src python -m leader_teleop.record \
+	--robot.type=bi_so101_client --robot.remote_ip=<파이 IP> \
+	--robot.cameras='{"top": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "left_wrist": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "right_wrist": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}}' \
+	--teleop.type=bi_so101_leader --teleop.id=bi_so101_leader \
+	--teleop.left_arm_port=/dev/ttyACM0 \
+	--teleop.right_arm_port=/dev/ttyACM1 \
+	--dataset.repo_id=<HF계정>/<데이터셋이름> \
+	--dataset.single_task='물건을 집어 상자에 넣는다' \
+	--dataset.num_episodes=10 --dataset.push_to_hub=false \
+	--display_data=true
+```
+
+### 동작 규칙
+
+- PC와 파이는 같은 네트워크에 있어야 하고, 파이의 5555/5556 포트가
+  열려 있어야 합니다 (`--host.port_zmq_cmd` / `--host.port_zmq_observations`
+  로 변경 가능).
+- 머리 모터가 있는 구성이면 `--camera_head.mode`를 **양쪽에 같게**
+  줍니다. 어긋나면 PC 쪽에서 키 불일치 경고가 납니다.
+- PC 프로그램을 끝내도(Ctrl+C/Esc) 팔은 마지막 자세를 유지합니다.
+  홈포즈 복귀와 토크 해제는 **파이 host를 Ctrl+C**로 끝낼 때 일어납니다.
+- 영상이 끊기면 `--host.fps=15`나 `--host.jpeg_quality=60`으로 전송량을
+  줄여 보세요 (기본 30fps / 품질 80).
+- 캘리브레이션 파일은 로봇이 붙은 쪽(파이)에 저장됩니다. PC 쪽
+  client는 캘리브레이션을 하지 않습니다.
+
 ## 카메라 헤드 (선택)
 
 머리 pan/tilt 모터가 있는 구성이면 `--camera_head.mode`로 제어합니다.
@@ -130,6 +209,7 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 | 팔 + 머리 합성 텔레옵 | `teleoperators/combined_teleop.py` |
 | 카메라 헤드 모드 | `head/head_modes.py` |
 | 연결 재시도 (간헐 통신 글리치 흡수) | `hardware_retry.py` |
+| 라즈베리파이 host / PC client / 직렬화 | `host.py` / `robots/bi_follower_client.py` / `remote_codec.py` |
 | 하드웨어 점검 / 홈포즈 캡처 | `scripts/check_robot.py` / `scripts/capture_home_pose.py` |
 
 ## 안전 주의
