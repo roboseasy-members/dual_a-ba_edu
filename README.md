@@ -250,9 +250,12 @@ PYTHONPATH=src python -m leader_teleop.record \
   권장하고, 끊기면 `--host.fps=15`나 `--host.jpeg_quality=60`으로 전송량을
   줄입니다. host 루프가 목표 주기를 못 채우면 경고 로그가 납니다.
 - PC 쪽 카메라 이름·해상도가 host와 다르면 연결 시점에 오류로 알려줍니다.
-- host의 카메라 한 대가 잠시 멈추면(읽기 타임아웃) 직전 관측을 재사용해
-  최대 약 1초까지 버팁니다. 이 구간의 프레임은 중복이며, 1초를 넘기면
-  host가 정리 후 종료됩니다.
+- host는 카메라 타임아웃이나 모터 버스의 순간 무응답(`no status packet`)을
+  일시적 오류로 보고 직전 관측 재사용·명령 건너뛰기로 버팁니다(관측
+  연속 10회, 명령 연속 15회까지). 재사용 구간의 프레임은 중복이며, 한도를
+  넘기면 장애로 보고 정리 후 종료됩니다. 첫 명령 순간 팔이 크게 점프하며
+  전류 피크로 버스가 잠깐 끊기는 경우가 흔하니, `--robot.max_relative_target=5`
+  를 주면 점프 자체가 줄어듭니다.
 - 이 구성으로 수집한 데이터셋의 `robot_type`은 `bi_so10x_client`로
   기록됩니다. 직접 연결로 만든 데이터셋을 client로 `--resume`하면 타입
   불일치로 거부됩니다.
@@ -651,6 +654,7 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 |------|------|------|
 | `motor check failed ... Full found motor list: {}` | 서보 전원(12V) 없음, 포트가 다른 장치, 같은 포트를 쓰는 다른 프로세스 | 12V 어댑터 연결, `check_robot`으로 포트 재확인, `ps aux \| grep leader_teleop` |
 | 캘리브레이션 중 `sync_read` 오류로 종료 | 관절을 움직이는 순간 전원이 끊김(배터리 출력 부족), 케이블 접촉 | 어댑터 전원으로 교체, 데이지체인 재연결 |
+| host가 `Failed to sync read ... no status packet`으로 종료 | 첫 명령 순간 전류 피크로 버스가 잠깐 침묵, 전원 여유 부족 | 어댑터 전류 여유 확인, host에 `--robot.max_relative_target=5`. 코드는 연속 한도 안에서 자동 재시도 |
 | `Couldn't find a choice class for 'opencv'` | 카메라 설정 클래스 미등록 (구버전 코드) | `git pull` |
 | `ModuleNotFoundError: No module named 'zmq'` | PC 환경에 pyzmq 없음 | `pip install -r requirements.txt` |
 | `Timed out waiting for frame from camera` | USB 대역폭 부족(무압축) 또는 첫 프레임 지연 | 카메라 설정에 `"fourcc": "MJPG", "warmup_s": 3`, 카메라를 USB 3.0/2.0 포트에 분산 |

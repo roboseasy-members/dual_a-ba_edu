@@ -26,6 +26,10 @@ MAX_CONNECT_ATTEMPTS: Final[int] = 5
 CONNECT_RETRY_DELAY_S: Final[float] = 1.0
 # 개별 버스 write/read에 줄 재시도 횟수 (통신 글리치 흡수용).
 BUS_WRITE_NUM_RETRY: Final[int] = 2
+# 실행 중(관측 읽기·목표 전송) 버스 통신 재시도 횟수. 첫 명령 순간의 전류
+# 피크나 케이블 접촉으로 한 사이클 응답이 비는 경우('no status packet')를
+# 하위 계층에서 흡수한다. 재시도 1회는 수십 ms라 제어 주기를 크게 안 해친다.
+BUS_IO_NUM_RETRY: Final[int] = 3
 
 # 전압 에러 시 출력할 점검 안내 (SO-101: 리더 5V / 팔로워 12V).
 VOLTAGE_HINT: Final[str] = (

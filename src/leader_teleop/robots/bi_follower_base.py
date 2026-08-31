@@ -39,6 +39,7 @@ from lerobot.utils.errors import (
 
 from ..config import HomeReturnConfig
 from ..hardware_retry import (
+	BUS_IO_NUM_RETRY,
 	BUS_WRITE_NUM_RETRY,
 	connect_with_retry,
 	log_bus_voltages,
@@ -472,16 +473,23 @@ class BiFollowerBase(Robot):
 		if not self.is_connected:
 			raise DeviceNotConnectedError(f'{self} is not connected.')
 
+		# 실행 중 통신 글리치는 num_retry로 흡수한다 (첫 명령 순간의 전류
+		# 피크 등으로 한 사이클 응답이 비면 'no status packet'이 난다).
 		left_arm_pos = self.bus1.sync_read(
-			'Present_Position', self.left_arm_motors
+			'Present_Position', self.left_arm_motors,
+			num_retry=BUS_IO_NUM_RETRY,
 		)
 		right_arm_pos = self.bus2.sync_read(
-			'Present_Position', self.right_arm_motors
+			'Present_Position', self.right_arm_motors,
+			num_retry=BUS_IO_NUM_RETRY,
 		)
 		# 주의: lerobot sync_read는 빈 모터 목록에서 StopIteration으로
 		# 죽는다 (모델 조회) - 머리 미장착이면 호출 자체를 건너뛴다.
 		head_pos = (
-			self.bus1.sync_read('Present_Position', self.head_motors)
+			self.bus1.sync_read(
+				'Present_Position', self.head_motors,
+				num_retry=BUS_IO_NUM_RETRY,
+			)
 			if self.head_motors else {}
 		)
 
@@ -538,10 +546,12 @@ class BiFollowerBase(Robot):
 
 		if self.config.max_relative_target is not None:
 			present_bus1 = self.bus1.sync_read(
-				'Present_Position', self.left_arm_motors + self.head_motors
+				'Present_Position', self.left_arm_motors + self.head_motors,
+				num_retry=BUS_IO_NUM_RETRY,
 			)
 			present_bus2 = self.bus2.sync_read(
-				'Present_Position', self.right_arm_motors
+				'Present_Position', self.right_arm_motors,
+				num_retry=BUS_IO_NUM_RETRY,
 			)
 			present_pos = {**present_bus1, **present_bus2}
 			goal_present_pos = {
@@ -562,9 +572,13 @@ class BiFollowerBase(Robot):
 			)
 			target_goal[name] = value
 		if bus1_goal:
-			self.bus1.sync_write('Goal_Position', bus1_goal)
+			self.bus1.sync_write(
+				'Goal_Position', bus1_goal, num_retry=BUS_IO_NUM_RETRY
+			)
 		if bus2_goal:
-			self.bus2.sync_write('Goal_Position', bus2_goal)
+			self.bus2.sync_write(
+				'Goal_Position', bus2_goal, num_retry=BUS_IO_NUM_RETRY
+			)
 
 		return dict(goal_pos)
 
@@ -597,10 +611,12 @@ class BiFollowerBase(Robot):
 				target['head_motor_2.pos'] = home_config.head_tilt_deg
 
 			present_bus1 = self.bus1.sync_read(
-				'Present_Position', self.left_arm_motors + self.head_motors
+				'Present_Position', self.left_arm_motors + self.head_motors,
+				num_retry=BUS_IO_NUM_RETRY,
 			)
 			present_bus2 = self.bus2.sync_read(
-				'Present_Position', self.right_arm_motors
+				'Present_Position', self.right_arm_motors,
+				num_retry=BUS_IO_NUM_RETRY,
 			)
 			current = {
 				f'{name}.pos': value
