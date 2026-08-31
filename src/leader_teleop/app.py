@@ -31,7 +31,12 @@ from lerobot.utils.robot_utils import precise_sleep
 
 from .config import HomeReturnConfig
 from .head.head_modes import HeadControlConfig, make_head_controller
-from .robots import BiFollowerBase, BiFollowerBaseConfig, BiSo101FollowerConfig
+from .robots import (
+	BiFollowerBase,
+	BiFollowerBaseConfig,
+	BiFollowerClientConfig,
+	BiSo101FollowerConfig,
+)
 from .teleoperators import BiSo101LeaderConfig
 from .teleoperators.combined_teleop import (
 	CombinedTeleop,
@@ -82,7 +87,10 @@ class TeleopApp:
 		self.config = config
 		# 머리 모터 장착 여부는 --camera_head.mode가 단일 출처다 -
 		# none(기본)이면 미장착으로 보고 bus1이 팔 모터만 검색한다.
-		if isinstance(config.robot, BiFollowerBaseConfig):
+		# 원격 클라이언트도 같은 규칙으로 관측/액션 키를 맞춘다.
+		if isinstance(
+			config.robot, (BiFollowerBaseConfig, BiFollowerClientConfig)
+		):
 			config.robot.has_head_motors = (
 				config.camera_head.mode.lower() != 'none'
 			)
