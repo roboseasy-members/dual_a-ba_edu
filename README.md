@@ -204,6 +204,31 @@ PYTHONPATH=src python -m leader_teleop.record \
   기록됩니다. 직접 연결로 만든 데이터셋(`bi_so101_follower`)을 client로
   `--resume`하면 타입 불일치로 거부됩니다.
 
+## 학습한 정책 실행 (추론)
+
+`lerobot-rollout`을 이 레포의 로봇 타입이 등록된 상태로 실행하는
+진입점입니다(`lerobot-rollout` 명령을 직접 쓰면 `bi_so101_client` 같은
+타입을 모릅니다). 파이 host 구성이면 `--robot.type=bi_so10x_client`, 직접
+연결이면 `bi_so10x_follower`를 씁니다.
+
+```bash
+PYTHONPATH=src python -m leader_teleop.rollout \
+	--robot.type=bi_so102_client --robot.remote_ip=<파이 IP> \
+	--robot.cameras='{"cam_top": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "cam_wrist_left": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "cam_wrist_right": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}}' \
+	--policy.path=outputs/<학습 출력 폴더>/checkpoints/last/pretrained_model \
+	--rename_map='{"observation.images.cam_top": "observation.images.camera1", "observation.images.cam_wrist_left": "observation.images.camera2", "observation.images.cam_wrist_right": "observation.images.camera3"}' \
+	--task="Put the red die on the yellow cloth." \
+	--duration=60 --fps=10 --policy.device=cuda
+```
+
+- `--rename_map`은 **학습 때 준 것과 같아야** 합니다. `smolvla_base`에서
+  파인튜닝한 정책은 카메라를 `camera1/2/3`으로 기대합니다. 빼면
+  `Visual feature mismatch`로 시작하지 않습니다.
+- `--task`는 언어 조건부 정책(SmolVLA)이 읽는 문장입니다. ACT는 무시합니다.
+- `--policy.path`에는 허브 이름(`rkdals2779/<모델>`)도 됩니다.
+- 종료는 `Ctrl+C` 또는 `--duration` 만료. 기본으로 시작 자세로 되돌린 뒤
+  끝납니다(`--return_to_initial_position=false`로 끌 수 있음).
+
 ## 카메라 헤드 (선택)
 
 머리 pan/tilt 모터가 있는 구성이면 `--camera_head.mode`로 제어합니다.
@@ -232,7 +257,7 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 
 | 역할 | 파일 |
 |------|------|
-| 진입점 (직접 텔레옵 / 데이터 수집) | `teleoperate.py` / `record.py` |
+| 진입점 (직접 텔레옵 / 데이터 수집 / 추론) | `teleoperate.py` / `record.py` / `rollout.py` |
 | 조립·연결·제어 루프·정리 | `app.py` |
 | 공유 설정 (홈포즈 등) | `config.py` |
 | 양팔+머리 팔로워 로봇 (공통/세대 명세) | `robots/bi_follower_base.py` + `bi_so101_follower.py`/`bi_so102_follower.py` |
