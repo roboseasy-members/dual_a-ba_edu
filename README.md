@@ -49,12 +49,13 @@ SmolVLA 또는 ACT를 학습합니다.
 Python 3.12 기준입니다. conda나 venv 같은 가상환경을 씁니다.
 
 ```bash
+sudo apt update && sudo apt install -y git v4l-utils ffmpeg  # ffmpeg: 데이터셋 영상 디코딩(TorchCodec)
 git clone <레포 URL> && cd dual_a-ba_edu
 pip install -r requirements.txt
 ```
 
-`requirements.txt`에는 lerobot 0.6.0(모터·시각화·영상 인코딩·SmolVLA
-extra), pyzmq(원격 구성), mujoco(시뮬레이션 실습)가 들어 있습니다. 학습을
+`requirements.txt`에는 lerobot 0.6.0(모터·시각화·영상 인코딩·학습(accelerate/wandb)·
+SmolVLA extra), pyzmq(원격 구성), mujoco(시뮬레이션 실습)가 들어 있습니다. 학습을
 GPU로 할 PC에는 CUDA용 torch가 설치돼야 하며, PyPI 기본 torch가 CUDA를
 포함합니다.
 
@@ -396,7 +397,7 @@ hf upload <HF계정>/<이름> <로컬경로> . --repo-type dataset \
 ### 공통 준비
 
 ```bash
-huggingface-cli login     # Write 권한 토큰 (모델·데이터셋 업로드)
+hf auth login             # Write 권한 토큰 (모델·데이터셋 업로드). huggingface-cli는 hub 1.x에서 제거됨
 wandb login               # https://wandb.ai/authorize 의 API 키
 export HF_USER=<HF계정>
 export TASK_NAME=<데이터셋이름>
@@ -439,8 +440,9 @@ lerobot-train \
   걸쳐 코사인 감쇠하고, 그 뒤로는 바닥값(2.5e-6)으로 고정됩니다. 10만
   스텝 내내 감쇠시키려면 `--policy.scheduler_decay_steps=90_000`을 시작할
   때 줍니다. 이 값은 나중에 이어 학습할 때 바꿀 수 없습니다.
-- 이 PC(RTX 5070 Ti Laptop)에서 배치 16 기준 스텝당 0.5초 안팎입니다.
-  10만 스텝이면 대략 14시간입니다.
+- 이 PC(RTX 5070 Ti Laptop)에서 배치 16 기준 스텝당 0.61초(로그
+  `updt_s` 0.605~0.614), 5만 스텝 8시간 37분, `mem_gb` 6.0이었습니다. 10만
+  스텝이면 약 17시간입니다.
 
 ### ACT (단일 태스크, 처음부터 학습)
 
