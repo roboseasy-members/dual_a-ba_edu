@@ -196,9 +196,14 @@ PYTHONPATH=src python -m leader_teleop.host \
 
 `Waiting for client...`가 뜨면 준비 완료입니다. 첫 실행에서 팔로워
 캘리브레이션이 진행되며 파일은 파이에 저장됩니다. 수업처럼 장시간
-운용하면 `tmux` 안에서 띄워 SSH와 host의 수명을 분리합니다. 안전 여유가
-필요하면 `--robot.max_relative_target=5`(전송 1회당 관절 이동 상한, deg)를
-추가합니다.
+운용하면 `tmux` 안에서 띄워 SSH와 host의 수명을 분리합니다.
+
+`--robot.max_relative_target`(전송 1회당 관절 이동 상한)은 텔레옵·수집에
+쓰지 않습니다. 값을 5로 주면 30Hz 루프에서 관절 속도가 150°/s로 잘리고
+명령마다 현재 위치를 다시 읽어 루프가 느려져, 팔로워가 리더를 뒤늦게
+따라오는 둔한 반응이 됩니다. 첫 연결 순간의 점프는 클라이언트를 붙이기
+전에 리더암을 팔로워의 현재 자세(홈포즈)와 비슷하게 잡아 두는 것으로
+줄입니다.
 
 ### 4. PC에서 텔레옵 / 데이터 수집
 
@@ -254,8 +259,8 @@ PYTHONPATH=src python -m leader_teleop.record \
   일시적 오류로 보고 직전 관측 재사용·명령 건너뛰기로 버팁니다(관측
   연속 10회, 명령 연속 15회까지). 재사용 구간의 프레임은 중복이며, 한도를
   넘기면 장애로 보고 정리 후 종료됩니다. 첫 명령 순간 팔이 크게 점프하며
-  전류 피크로 버스가 잠깐 끊기는 경우가 흔하니, `--robot.max_relative_target=5`
-  를 주면 점프 자체가 줄어듭니다.
+  전류 피크로 버스가 잠깐 끊기는 경우가 흔하니, 연결 전에 리더 자세를
+  팔로워와 비슷하게 맞추고 전원 어댑터의 전류 여유를 확인합니다.
 - 이 구성으로 수집한 데이터셋의 `robot_type`은 `bi_so10x_client`로
   기록됩니다. 직접 연결로 만든 데이터셋을 client로 `--resume`하면 타입
   불일치로 거부됩니다.
@@ -654,7 +659,8 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 |------|------|------|
 | `motor check failed ... Full found motor list: {}` | 서보 전원(12V) 없음, 포트가 다른 장치, 같은 포트를 쓰는 다른 프로세스 | 12V 어댑터 연결, `check_robot`으로 포트 재확인, `ps aux \| grep leader_teleop` |
 | 캘리브레이션 중 `sync_read` 오류로 종료 | 관절을 움직이는 순간 전원이 끊김(배터리 출력 부족), 케이블 접촉 | 어댑터 전원으로 교체, 데이지체인 재연결 |
-| host가 `Failed to sync read ... no status packet`으로 종료 | 첫 명령 순간 전류 피크로 버스가 잠깐 침묵, 전원 여유 부족 | 어댑터 전류 여유 확인, host에 `--robot.max_relative_target=5`. 코드는 연속 한도 안에서 자동 재시도 |
+| host가 `Failed to sync read ... no status packet`으로 종료 | 첫 명령 순간 전류 피크로 버스가 잠깐 침묵, 전원 여유 부족 | 어댑터 전류 여유 확인, 연결 전 리더 자세를 팔로워와 맞춤. 코드는 연속 한도 안에서 자동 재시도 |
+| 텔레옵 반응이 느리고 팔로워가 뒤늦게 따라옴 | host에 `--robot.max_relative_target`가 켜져 있음 | 옵션 제거 (관절 속도 상한과 추가 읽기로 루프가 느려짐) |
 | `Couldn't find a choice class for 'opencv'` | 카메라 설정 클래스 미등록 (구버전 코드) | `git pull` |
 | `ModuleNotFoundError: No module named 'zmq'` | PC 환경에 pyzmq 없음 | `pip install -r requirements.txt` |
 | `Timed out waiting for frame from camera` | USB 대역폭 부족(무압축) 또는 첫 프레임 지연 | 카메라 설정에 `"fourcc": "MJPG", "warmup_s": 3`, 카메라를 USB 3.0/2.0 포트에 분산 |
