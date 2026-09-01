@@ -598,6 +598,10 @@ PYTHONPATH=src python -m leader_teleop.rollout \
 
 - `--rename_map`은 학습 때 준 것과 같아야 합니다. 빼면 `Visual feature
   mismatch`로 시작하지 않습니다. ACT는 필요 없습니다.
+- 직접 연결(`bi_so10x_follower`)로 추론할 때 머리 모터가 달린 구성이면
+  `--robot.has_head_motors=true`를 줍니다. 기본값은 머리 없음이며,
+  teleoperate/record/host는 `--camera_head.mode`로 이 값을 자동 설정하지만
+  rollout은 lerobot이 로봇을 직접 만들어 그 단계를 거치지 않습니다.
 - `--task`는 SmolVLA가 읽는 문장입니다. ACT는 무시합니다. 학습에 넣지
   않은 표현으로도 시험해 보면 언어 일반화를 확인할 수 있습니다.
 - `--policy.path`에는 허브 이름(`${HF_USER}/${TASK_NAME}_smolvla`)이나
