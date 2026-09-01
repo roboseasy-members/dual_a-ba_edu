@@ -158,13 +158,19 @@ torch는 CPU 전용 wheel을 먼저 설치해야 파이에서 쓸모없는 CUDA 
 패키지가 붙습니다).
 
 ```bash
-sudo apt update && sudo apt install -y python3-venv git v4l-utils
+sudo apt update && sudo apt install -y python3-venv git v4l-utils ffmpeg
 git clone <레포 URL> && cd dual_a-ba_edu
 python3 -m venv ~/.venvs/dual_edu && source ~/.venvs/dual_edu/bin/activate
 pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements_host.txt      # lerobot[feetech] + pyzmq만
+pip install -r requirements_host.txt      # lerobot[feetech,dataset] + pyzmq + pynput
 sudo usermod -aG dialout $USER            # 시리얼 권한, 재로그인 필요
 ```
+
+`dataset` extra는 host 자체에는 필요 없지만, 파이에서 PC 없이 정책을
+직접 실행(`leader_teleop.rollout --robot.type=bi_so10x_follower
+--policy.device=cpu`)할 때 rollout 모듈이 요구합니다. ACT 1회 추론이
+PC CPU 4스레드에서 0.28초였고 파이에서는 몇 배 느리므로, 행동 청크
+사이에 멈춤이 생기는 데모용 경로입니다.
 
 ### 2. 파이에서 카메라 확인
 
