@@ -611,6 +611,13 @@ PYTHONPATH=src python -m leader_teleop.rollout \
   ACT는 가벼워 30fps가 됩니다.
 - 종료는 `Ctrl+C` 또는 `--duration` 만료입니다. 기본으로 시작 자세로
   되돌린 뒤 끝납니다(`--return_to_initial_position=false`로 끌 수 있음).
+- 파이에서 직접 실행(`bi_so10x_follower`, `--policy.device=cpu`)하면 ACT는
+  청크(행동 100개, 3.3초 분량) 경계마다 다음 추론이 끝날 때까지 멈춥니다.
+  파이 CPU의 1회 추론이 수 초라 "목표 도달 → 수 초 정지 → 그리퍼 닫기"
+  처럼 보이며, 카메라 읽기 부하로 루프가 30fps를 못 채워 전체가 느려집니다.
+  고장이 아니라 청킹 구조입니다. 매끄러운 동작은 PC GPU 추론(host/client
+  구성)으로 얻고, ACT에는 실행 중 다음 청크를 미리 계산하는
+  `--inference.type=rtc`가 적용되지 않습니다(SmolVLA·π0 계열만 지원).
 
 ## 카메라 헤드 (선택)
 
