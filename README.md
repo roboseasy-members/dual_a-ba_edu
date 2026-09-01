@@ -49,12 +49,13 @@ SmolVLA 또는 ACT를 학습합니다.
 Python 3.12 기준입니다. conda나 venv 같은 가상환경을 씁니다.
 
 ```bash
+sudo apt update && sudo apt install -y git v4l-utils ffmpeg  # ffmpeg: 데이터셋 영상 디코딩(TorchCodec)
 git clone <레포 URL> && cd dual_a-ba_edu
 pip install -r requirements.txt
 ```
 
-`requirements.txt`에는 lerobot 0.6.0(모터·시각화·영상 인코딩·SmolVLA
-extra), pyzmq(원격 구성), mujoco(시뮬레이션 실습)가 들어 있습니다. 학습을
+`requirements.txt`에는 lerobot 0.6.0(모터·시각화·영상 인코딩·학습(accelerate/wandb)·
+SmolVLA extra), pyzmq(원격 구성), mujoco(시뮬레이션 실습)가 들어 있습니다. 학습을
 GPU로 할 PC에는 CUDA용 torch가 설치돼야 하며, PyPI 기본 torch가 CUDA를
 포함합니다.
 
@@ -158,13 +159,19 @@ torch는 CPU 전용 wheel을 먼저 설치해야 파이에서 쓸모없는 CUDA 
 패키지가 붙습니다).
 
 ```bash
-sudo apt update && sudo apt install -y python3-venv git v4l-utils
+sudo apt update && sudo apt install -y python3-venv git v4l-utils ffmpeg
 git clone <레포 URL> && cd dual_a-ba_edu
 python3 -m venv ~/.venvs/dual_edu && source ~/.venvs/dual_edu/bin/activate
 pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements_host.txt      # lerobot[feetech] + pyzmq만
+pip install -r requirements_host.txt      # lerobot[feetech,dataset] + pyzmq + pynput
 sudo usermod -aG dialout $USER            # 시리얼 권한, 재로그인 필요
 ```
+
+`dataset` extra는 host 자체에는 필요 없지만, 파이에서 PC 없이 정책을
+직접 실행(`leader_teleop.rollout --robot.type=bi_so10x_follower
+--policy.device=cpu`)할 때 rollout 모듈이 요구합니다. ACT 1회 추론이
+PC CPU 4스레드에서 0.28초였고 파이에서는 몇 배 느리므로, 행동 청크
+사이에 멈춤이 생기는 데모용 경로입니다.
 
 ### 2. 파이에서 카메라 확인
 
@@ -196,9 +203,14 @@ PYTHONPATH=src python -m leader_teleop.host \
 
 `Waiting for client...`가 뜨면 준비 완료입니다. 첫 실행에서 팔로워
 캘리브레이션이 진행되며 파일은 파이에 저장됩니다. 수업처럼 장시간
-운용하면 `tmux` 안에서 띄워 SSH와 host의 수명을 분리합니다. 안전 여유가
-필요하면 `--robot.max_relative_target=5`(전송 1회당 관절 이동 상한, deg)를
-추가합니다.
+운용하면 `tmux` 안에서 띄워 SSH와 host의 수명을 분리합니다.
+
+`--robot.max_relative_target`(전송 1회당 관절 이동 상한)은 텔레옵·수집에
+쓰지 않습니다. 값을 5로 주면 30Hz 루프에서 관절 속도가 150°/s로 잘리고
+명령마다 현재 위치를 다시 읽어 루프가 느려져, 팔로워가 리더를 뒤늦게
+따라오는 둔한 반응이 됩니다. 첫 연결 순간의 점프는 클라이언트를 붙이기
+전에 리더암을 팔로워의 현재 자세(홈포즈)와 비슷하게 잡아 두는 것으로
+줄입니다.
 
 ### 4. PC에서 텔레옵 / 데이터 수집
 
@@ -254,8 +266,8 @@ PYTHONPATH=src python -m leader_teleop.record \
   일시적 오류로 보고 직전 관측 재사용·명령 건너뛰기로 버팁니다(관측
   연속 10회, 명령 연속 15회까지). 재사용 구간의 프레임은 중복이며, 한도를
   넘기면 장애로 보고 정리 후 종료됩니다. 첫 명령 순간 팔이 크게 점프하며
-  전류 피크로 버스가 잠깐 끊기는 경우가 흔하니, `--robot.max_relative_target=5`
-  를 주면 점프 자체가 줄어듭니다.
+  전류 피크로 버스가 잠깐 끊기는 경우가 흔하니, 연결 전에 리더 자세를
+  팔로워와 비슷하게 맞추고 전원 어댑터의 전류 여유를 확인합니다.
 - 이 구성으로 수집한 데이터셋의 `robot_type`은 `bi_so10x_client`로
   기록됩니다. 직접 연결로 만든 데이터셋을 client로 `--resume`하면 타입
   불일치로 거부됩니다.
@@ -385,7 +397,7 @@ hf upload <HF계정>/<이름> <로컬경로> . --repo-type dataset \
 ### 공통 준비
 
 ```bash
-huggingface-cli login     # Write 권한 토큰 (모델·데이터셋 업로드)
+hf auth login             # Write 권한 토큰 (모델·데이터셋 업로드). huggingface-cli는 hub 1.x에서 제거됨
 wandb login               # https://wandb.ai/authorize 의 API 키
 export HF_USER=<HF계정>
 export TASK_NAME=<데이터셋이름>
@@ -428,8 +440,9 @@ lerobot-train \
   걸쳐 코사인 감쇠하고, 그 뒤로는 바닥값(2.5e-6)으로 고정됩니다. 10만
   스텝 내내 감쇠시키려면 `--policy.scheduler_decay_steps=90_000`을 시작할
   때 줍니다. 이 값은 나중에 이어 학습할 때 바꿀 수 없습니다.
-- 이 PC(RTX 5070 Ti Laptop)에서 배치 16 기준 스텝당 0.5초 안팎입니다.
-  10만 스텝이면 대략 14시간입니다.
+- 이 PC(RTX 5070 Ti Laptop)에서 배치 16 기준 스텝당 0.61초(로그
+  `updt_s` 0.605~0.614), 5만 스텝 8시간 37분, `mem_gb` 6.0이었습니다. 10만
+  스텝이면 약 17시간입니다.
 
 ### ACT (단일 태스크, 처음부터 학습)
 
@@ -587,6 +600,10 @@ PYTHONPATH=src python -m leader_teleop.rollout \
 
 - `--rename_map`은 학습 때 준 것과 같아야 합니다. 빼면 `Visual feature
   mismatch`로 시작하지 않습니다. ACT는 필요 없습니다.
+- 직접 연결(`bi_so10x_follower`)로 추론할 때 머리 모터가 달린 구성이면
+  `--robot.has_head_motors=true`를 줍니다. 기본값은 머리 없음이며,
+  teleoperate/record/host는 `--camera_head.mode`로 이 값을 자동 설정하지만
+  rollout은 lerobot이 로봇을 직접 만들어 그 단계를 거치지 않습니다.
 - `--task`는 SmolVLA가 읽는 문장입니다. ACT는 무시합니다. 학습에 넣지
   않은 표현으로도 시험해 보면 언어 일반화를 확인할 수 있습니다.
 - `--policy.path`에는 허브 이름(`${HF_USER}/${TASK_NAME}_smolvla`)이나
@@ -596,6 +613,13 @@ PYTHONPATH=src python -m leader_teleop.rollout \
   ACT는 가벼워 30fps가 됩니다.
 - 종료는 `Ctrl+C` 또는 `--duration` 만료입니다. 기본으로 시작 자세로
   되돌린 뒤 끝납니다(`--return_to_initial_position=false`로 끌 수 있음).
+- 파이에서 직접 실행(`bi_so10x_follower`, `--policy.device=cpu`)하면 ACT는
+  청크(행동 100개, 3.3초 분량) 경계마다 다음 추론이 끝날 때까지 멈춥니다.
+  파이 CPU의 1회 추론이 수 초라 "목표 도달 → 수 초 정지 → 그리퍼 닫기"
+  처럼 보이며, 카메라 읽기 부하로 루프가 30fps를 못 채워 전체가 느려집니다.
+  고장이 아니라 청킹 구조입니다. 매끄러운 동작은 PC GPU 추론(host/client
+  구성)으로 얻고, ACT에는 실행 중 다음 청크를 미리 계산하는
+  `--inference.type=rtc`가 적용되지 않습니다(SmolVLA·π0 계열만 지원).
 
 ## 카메라 헤드 (선택)
 
@@ -654,7 +678,8 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 |------|------|------|
 | `motor check failed ... Full found motor list: {}` | 서보 전원(12V) 없음, 포트가 다른 장치, 같은 포트를 쓰는 다른 프로세스 | 12V 어댑터 연결, `check_robot`으로 포트 재확인, `ps aux \| grep leader_teleop` |
 | 캘리브레이션 중 `sync_read` 오류로 종료 | 관절을 움직이는 순간 전원이 끊김(배터리 출력 부족), 케이블 접촉 | 어댑터 전원으로 교체, 데이지체인 재연결 |
-| host가 `Failed to sync read ... no status packet`으로 종료 | 첫 명령 순간 전류 피크로 버스가 잠깐 침묵, 전원 여유 부족 | 어댑터 전류 여유 확인, host에 `--robot.max_relative_target=5`. 코드는 연속 한도 안에서 자동 재시도 |
+| host가 `Failed to sync read ... no status packet`으로 종료 | 첫 명령 순간 전류 피크로 버스가 잠깐 침묵, 전원 여유 부족 | 어댑터 전류 여유 확인, 연결 전 리더 자세를 팔로워와 맞춤. 코드는 연속 한도 안에서 자동 재시도 |
+| 텔레옵 반응이 느리고 팔로워가 뒤늦게 따라옴 | host에 `--robot.max_relative_target`가 켜져 있음 | 옵션 제거 (관절 속도 상한과 추가 읽기로 루프가 느려짐) |
 | `Couldn't find a choice class for 'opencv'` | 카메라 설정 클래스 미등록 (구버전 코드) | `git pull` |
 | `ModuleNotFoundError: No module named 'zmq'` | PC 환경에 pyzmq 없음 | `pip install -r requirements.txt` |
 | `Timed out waiting for frame from camera` | USB 대역폭 부족(무압축) 또는 첫 프레임 지연 | 카메라 설정에 `"fourcc": "MJPG", "warmup_s": 3`, 카메라를 USB 3.0/2.0 포트에 분산 |

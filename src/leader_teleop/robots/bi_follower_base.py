@@ -58,10 +58,11 @@ class BiFollowerBaseConfig(RobotConfig):
 	disable_torque_on_disconnect: bool = True  # 해제 시 토크 자동 off
 	max_relative_target: float | None = None  # 프레임당 이동 제한(안전)
 	cameras: dict[str, CameraConfig] = field(default_factory=dict)  # 카메라
-	# 머리(카메라 pan/tilt) 모터 장착 여부. 직접 지정하지 않는다 -
-	# 조립 계층(app/record)이 --camera_head.mode(none이면 미장착)로
-	# 설정한다. False면 bus1이 팔 모터만 검색/제어한다.
-	has_head_motors: bool = True
+	# 머리(카메라 pan/tilt) 모터 장착 여부. 조립 계층(app/record/host)은
+	# --camera_head.mode(none이면 미장착)로 덮어쓴다. rollout처럼 로봇을
+	# 직접 만드는 경로는 이 기본값을 쓰므로, 교육 구성(머리 없음)에 맞춰
+	# False가 기본이다. 머리가 있으면 --robot.has_head_motors=true를 준다.
+	has_head_motors: bool = False
 
 
 class BiFollowerBase(Robot):
