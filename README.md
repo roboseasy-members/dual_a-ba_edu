@@ -25,7 +25,8 @@ SmolVLA 또는 ACT를 학습합니다.
 8. [학습](#학습)
 9. [추론](#추론)
 10. [카메라 헤드 / 홈포즈 / 코드 구조 / 안전](#카메라-헤드-선택)
-11. [문제 해결](#문제-해결)
+11. [lerobot에 SO-102 직접 추가하기 (solution/)](#lerobot에-so-102-직접-추가하기-solution)
+12. [문제 해결](#문제-해결)
 
 ## 타깃 하드웨어
 
@@ -661,6 +662,48 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 | MuJoCo 시뮬레이션 실습 | `mujoco_sim/` (별도 README) |
 | 하드웨어 점검 / 홈포즈 캡처 | `scripts/check_robot.py` / `scripts/capture_home_pose.py` |
 | 단위 테스트 | `tests/` (`PYTHONPATH=src python -m leader_teleop.tests.<모듈>`) |
+
+## lerobot에 SO-102 직접 추가하기 (solution/)
+
+`solution/`은 이 레포의 실행 코드(`src/leader_teleop/`)와는 별개로,
+**lerobot v0.6.0 원본 소스에 SO-102(7축) 로봇을 직접 등록하는 실습**의
+완성본입니다. 수업에서는 학생이 이 코드를 VS Code로 붙여넣고 등록 지점을
+손으로 고칩니다. 실습 자료는 `추가 교재/2일차 코드 붙여넣기/`에 있습니다.
+
+| solution/ | 넣을 위치 (`lerobot/src/lerobot/` 아래 같은 경로) | 등록되는 타입 |
+|------|------|------|
+| `robots/so102_follower/` (3개) | `robots/so102_follower/` | `so102_follower` — 7축 팔로워 |
+| `teleoperators/so102_leader/` (3개) | `teleoperators/so102_leader/` | `so102_leader` — 7축 리더 |
+| `robots/bi_so102_follower/` (5개) | `robots/bi_so102_follower/` | `bi_so102_follower`, `bi_so102_client` — 양팔 팔로워 + 파이 host / PC client (ZMQ) |
+| `teleoperators/bi_so102_leader/` (3개) | `teleoperators/bi_so102_leader/` | `bi_so102_leader` — 양팔 리더 |
+
+파일을 넣은 뒤 원본 3곳을 고쳐야 `--robot.type`이 인식됩니다.
+
+1. `robots/utils.py`의 `make_robot_from_config` 마지막 `else:` 앞에 elif 3개
+   (`so102_follower`, `bi_so102_follower`, `bi_so102_client`)
+2. `teleoperators/utils.py`의 `make_teleoperator_from_config` 마지막 `else:` 앞에 elif 2개
+   (`so102_leader`, `bi_so102_leader`)
+3. `scripts/lerobot_*.py` 7개(calibrate·teleoperate·record·replay·rollout·setup_motors·find_joint_limits)의
+   `from lerobot.robots import (...)`에 `so102_follower,` `bi_so102_follower,`,
+   `from lerobot.teleoperators import (...)`에 `so102_leader,` `bi_so102_leader,` 추가
+
+```python
+# robots/utils.py — elif 형식 (다른 타입도 같은 꼴)
+    elif config.type == "so102_follower":
+        from .so102_follower import SO102Follower
+
+        return SO102Follower(config)
+```
+
+확인:
+
+```bash
+lerobot-calibrate --robot.type=so102_follower --robot.port=/dev/ttyACM0 --robot.id=my_so102_follower
+```
+
+`invalid choice`가 사라지고 캘리브레이션(팔이 없으면 `Could not connect on port`)으로
+진행되면 등록된 것입니다. 파이에서 host를 띄우려면 같은 코드를 파이의 lerobot에도
+복사합니다 (`rsync -av ~/workspace/lerobot/src/lerobot/ roboseasy@<파이>.local:~/lerobot/src/lerobot/`).
 
 ## 안전 주의
 
