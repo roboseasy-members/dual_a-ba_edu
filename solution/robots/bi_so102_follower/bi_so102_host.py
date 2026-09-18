@@ -3,6 +3,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Final
 
 import cv2
 import draccus
@@ -14,6 +15,8 @@ from lerobot.utils.utils import init_logging
 
 from .bi_so102_follower import BiSO102Follower
 from .config_bi_so102_follower import BiSO102FollowerConfig, BiSO102HostConfig
+
+MAX_CONSECUTIVE_READ_FAILURES: Final = 5
 
 
 @dataclass
@@ -69,6 +72,7 @@ def main(cfg: BiSO102ServerConfig):
     last_cmd_time = time.time()
     watchdog_active = False
     client_connected = True
+    consecutive_read_failures = 0
     logging.info("Waiting for commands...")
     try:
         start = time.perf_counter()
@@ -93,17 +97,35 @@ def main(cfg: BiSO102ServerConfig):
                 )
                 watchdog_active = True
 
-            last_observation = _encode_observation(robot.get_observation())
-
+            last_observation = None
             try:
-                host.zmq_observation_socket.send_string(json.dumps(last_observation), flags=zmq.NOBLOCK)
-                if not client_connected:
-                    logging.info("Client connected, sending observations")
-                    client_connected = True
-            except zmq.Again:
-                if client_connected:
-                    logging.warning("No client connected, observations are dropped until one connects")
-                    client_connected = False
+                last_observation = _encode_observation(robot.get_observation())
+                consecutive_read_failures = 0
+            except ConnectionError as e:
+                consecutive_read_failures += 1
+                logging.warning(
+                    "Observation read failed (%d/%d), skipping this cycle: %s",
+                    consecutive_read_failures,
+                    MAX_CONSECUTIVE_READ_FAILURES,
+                    e,
+                )
+                if consecutive_read_failures >= MAX_CONSECUTIVE_READ_FAILURES:
+                    logging.error(
+                        "Observation read failed %d times in a row. Stopping host.",
+                        consecutive_read_failures,
+                    )
+                    raise
+
+            if last_observation is not None:
+                try:
+                    host.zmq_observation_socket.send_string(json.dumps(last_observation), flags=zmq.NOBLOCK)
+                    if not client_connected:
+                        logging.info("Client connected, sending observations")
+                        client_connected = True
+                except zmq.Again:
+                    if client_connected:
+                        logging.warning("No client connected, observations are dropped until one connects")
+                        client_connected = False
 
             elapsed = time.time() - loop_start_time
             time.sleep(max(1 / host.max_loop_freq_hz - elapsed, 0))
