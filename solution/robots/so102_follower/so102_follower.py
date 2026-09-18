@@ -1,6 +1,7 @@
 import logging
 import time
 from functools import cached_property
+from typing import Final
 
 from lerobot.cameras import make_cameras_from_configs
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
@@ -16,6 +17,8 @@ from ..utils import ensure_safe_goal_position
 from .config_so102_follower import SO102FollowerRobotConfig
 
 logger = logging.getLogger(__name__)
+
+BUS_NUM_RETRY: Final = 2
 
 
 class SO102Follower(Robot):
@@ -159,7 +162,7 @@ class SO102Follower(Robot):
     @check_if_not_connected
     def get_observation(self) -> RobotObservation:
         start = time.perf_counter()
-        obs_dict = self.bus.sync_read("Present_Position")
+        obs_dict = self.bus.sync_read("Present_Position", num_retry=BUS_NUM_RETRY)
         obs_dict = {f"{motor}.pos": val for motor, val in obs_dict.items()}
         dt_ms = (time.perf_counter() - start) * 1e3
         logger.debug(f"{self} read state: {dt_ms:.1f}ms")
@@ -184,9 +187,9 @@ class SO102Follower(Robot):
         goal_pos = {key.removesuffix(".pos"): val for key, val in action.items() if key.endswith(".pos")}
 
         if self.config.max_relative_target is not None:
-            present_pos = self.bus.sync_read("Present_Position")
+            present_pos = self.bus.sync_read("Present_Position", num_retry=BUS_NUM_RETRY)
             goal_present_pos = {key: (g_pos, present_pos[key]) for key, g_pos in goal_pos.items()}
             goal_pos = ensure_safe_goal_position(goal_present_pos, self.config.max_relative_target)
 
-        self.bus.sync_write("Goal_Position", goal_pos)
+        self.bus.sync_write("Goal_Position", goal_pos, num_retry=BUS_NUM_RETRY)
         return {f"{motor}.pos": val for motor, val in goal_pos.items()}
