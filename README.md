@@ -667,24 +667,35 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 
 `solution/`은 이 레포의 실행 코드(`src/leader_teleop/`)와는 별개로,
 **lerobot v0.6.0 원본 소스에 SO-102(7축) 로봇을 직접 등록하는 실습**의
-완성본입니다. 수업에서는 학생이 이 코드를 VS Code로 붙여넣고 등록 지점을
-손으로 고칩니다. 실습 자료는 `추가 교재/2일차 코드 붙여넣기/`에 있습니다.
+완성본입니다. `solution/` 아래 구조가 `lerobot/src/lerobot/`과 같아서,
+**그대로 덮어쓰면 끝납니다.**
 
-| solution/ | 넣을 위치 (`lerobot/src/lerobot/` 아래 같은 경로) | 등록되는 타입 |
+```bash
+rsync -av --exclude __pycache__ solution/ ~/workspace/lerobot/src/lerobot/     # 노트북
+rsync -av --exclude __pycache__ solution/ roboseasy@<파이>.local:~/lerobot/src/lerobot/   # 파이
+```
+
+lerobot은 editable(`pip install -e`)로 설치돼 있어야 하고, 복사만 하면 바로 반영됩니다.
+반드시 **v0.6.0** 위에 덮어씁니다. 아래 "원본 수정본" 9개는 v0.6.0 파일에 등록 줄만
+더한 것이라, 다른 버전에 덮으면 그 버전의 변경이 사라집니다.
+
+| solution/ | 종류 | 등록되는 타입 |
 |------|------|------|
-| `robots/so102_follower/` (3개) | `robots/so102_follower/` | `so102_follower` — 7축 팔로워 |
-| `teleoperators/so102_leader/` (3개) | `teleoperators/so102_leader/` | `so102_leader` — 7축 리더 |
-| `robots/bi_so102_follower/` (5개) | `robots/bi_so102_follower/` | `bi_so102_follower`, `bi_so102_client` — 양팔 팔로워 + 파이 host / PC client (ZMQ) |
-| `teleoperators/bi_so102_leader/` (3개) | `teleoperators/bi_so102_leader/` | `bi_so102_leader` — 양팔 리더 |
+| `robots/so102_follower/` (3개) | 새 패키지 | `so102_follower` — 7축 팔로워 |
+| `teleoperators/so102_leader/` (3개) | 새 패키지 | `so102_leader` — 7축 리더 |
+| `robots/bi_so102_follower/` (5개) | 새 패키지 | `bi_so102_follower`, `bi_so102_client` — 양팔 팔로워 + 파이 host / PC client (ZMQ) |
+| `teleoperators/bi_so102_leader/` (3개) | 새 패키지 | `bi_so102_leader` — 양팔 리더 |
+| `robots/utils.py`, `teleoperators/utils.py` | 원본 수정본 | 팩터리에 elif 3개 / 2개 추가 |
+| `scripts/lerobot_{calibrate,teleoperate,record,replay,rollout,setup_motors,find_joint_limits}.py` | 원본 수정본 | import 목록에 새 타입 4개 추가 |
 
-파일을 넣은 뒤 원본 3곳을 고쳐야 `--robot.type`이 인식됩니다.
+원본 수정본 9개가 v0.6.0과 다른 부분은 추가된 줄뿐입니다(삭제 0줄). 수업에서는 이 부분을
+학생이 손으로 고칩니다(`추가 교재/2일차 코드 붙여넣기/`). 직접 고칠 때의 위치:
 
 1. `robots/utils.py`의 `make_robot_from_config` 마지막 `else:` 앞에 elif 3개
    (`so102_follower`, `bi_so102_follower`, `bi_so102_client`)
 2. `teleoperators/utils.py`의 `make_teleoperator_from_config` 마지막 `else:` 앞에 elif 2개
    (`so102_leader`, `bi_so102_leader`)
-3. `scripts/lerobot_*.py` 7개(calibrate·teleoperate·record·replay·rollout·setup_motors·find_joint_limits)의
-   `from lerobot.robots import (...)`에 `so102_follower,` `bi_so102_follower,`,
+3. 스크립트 7개의 `from lerobot.robots import (...)`에 `so102_follower,` `bi_so102_follower,`,
    `from lerobot.teleoperators import (...)`에 `so102_leader,` `bi_so102_leader,` 추가
 
 ```python
@@ -701,10 +712,10 @@ PYTHONPATH=src python -m leader_teleop.scripts.capture_home_pose \
 lerobot-calibrate --robot.type=so102_follower --robot.port=/dev/ttyACM0 --robot.id=my_so102_follower
 ```
 
-`invalid choice`가 사라지고 캘리브레이션(팔이 없으면 `Could not connect on port`)으로
-진행되면 등록된 것입니다. 파이에서 host를 띄우려면 같은 코드를 파이의 lerobot에도
-복사합니다 (`rsync -av ~/workspace/lerobot/src/lerobot/ roboseasy@<파이>.local:~/lerobot/src/lerobot/`).
-host만 돌릴 파이에는 위 폴더 4개만 있으면 되고, 원본 3곳 수정은 필요 없습니다.
+`invalid choice`가 나오지 않고 캘리브레이션(팔이 없으면 `Could not connect on port`)으로
+진행되면 등록된 것입니다. host(`bi_so102_host`)만 돌릴 파이라면 새 패키지 4개만 있어도
+동작하지만, 파이에서 `lerobot-calibrate`로 팔로워를 캘리브레이션하려면 원본 수정본도 필요하므로
+전체를 덮어쓰는 편이 간단합니다.
 
 host(`bi_so102_host.py`)는 모터 버스의 간헐 통신 실패를 두 단계로 흡수합니다.
 
