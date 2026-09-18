@@ -704,6 +704,18 @@ lerobot-calibrate --robot.type=so102_follower --robot.port=/dev/ttyACM0 --robot.
 `invalid choice`가 사라지고 캘리브레이션(팔이 없으면 `Could not connect on port`)으로
 진행되면 등록된 것입니다. 파이에서 host를 띄우려면 같은 코드를 파이의 lerobot에도
 복사합니다 (`rsync -av ~/workspace/lerobot/src/lerobot/ roboseasy@<파이>.local:~/lerobot/src/lerobot/`).
+host만 돌릴 파이에는 위 폴더 4개만 있으면 되고, 원본 3곳 수정은 필요 없습니다.
+
+host(`bi_so102_host.py`)는 모터 버스의 간헐 통신 실패를 두 단계로 흡수합니다.
+
+| 단계 | 동작 |
+|------|------|
+| 버스 호출 | `sync_read`/`sync_write`를 실패 시 2회 더 시도합니다 (`BUS_NUM_RETRY`) |
+| host 루프 | 그래도 실패하면 `Observation read failed (n/5)` 경고를 남기고 그 사이클의 관측 전송만 건너뜁니다. 다음 읽기가 성공하면 카운터는 0으로 돌아갑니다 |
+| 종료 | 5회 연속 실패(`MAX_CONSECUTIVE_READ_FAILURES`)면 `Stopping host` 오류를 남기고 종료합니다. 케이블 분리·전원 차단 같은 실제 고장은 여기에 걸립니다 |
+
+경고가 자주 보이면 USB 경합(카메라 3대 + 시리얼 2개가 한 허브)이나 파이의
+발열(`vcgencmd get_throttled`)을 먼저 봅니다.
 
 ## 안전 주의
 
