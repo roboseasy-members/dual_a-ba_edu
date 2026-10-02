@@ -28,27 +28,41 @@ class BiSO102Follower(BimanualMixin, Robot):
             raise ValueError(
                 f"Top-level camera names collide with per-arm camera names: {sorted(_collisions)}"
             )
-        left_arm_cameras = {**config.left_arm_config.cameras, **config.cameras}
+
+        # 미러 모드는 좌우를 교체한다: left_* 키(리더 왼팔)가 팔로워 오른팔을 움직인다.
+        # 포트·캘리브레이션 파일·팔별 카메라를 짝으로 바꾸므로 다시 캘리브레이션할 필요가 없다.
+        arm_configs = {"left": config.left_arm_config, "right": config.right_arm_config}
+        left_side, right_side = ("right", "left") if config.mirror_mode else ("left", "right")
+        left_source, right_source = arm_configs[left_side], arm_configs[right_side]
+        left_arm_cameras = {**left_source.cameras, **config.cameras}
 
         left_arm_config = SO102FollowerRobotConfig(
-            id=f"{config.id}_left" if config.id else None,
+            id=f"{config.id}_{left_side}" if config.id else None,
             calibration_dir=config.calibration_dir,
-            port=config.left_arm_config.port,
-            disable_torque_on_disconnect=config.left_arm_config.disable_torque_on_disconnect,
-            max_relative_target=config.left_arm_config.max_relative_target,
-            use_degrees=config.left_arm_config.use_degrees,
+            port=left_source.port,
+            disable_torque_on_disconnect=left_source.disable_torque_on_disconnect,
+            max_relative_target=left_source.max_relative_target,
+            use_degrees=left_source.use_degrees,
             cameras=left_arm_cameras,
+            mirror_mode=config.mirror_mode,
         )
 
         right_arm_config = SO102FollowerRobotConfig(
-            id=f"{config.id}_right" if config.id else None,
+            id=f"{config.id}_{right_side}" if config.id else None,
             calibration_dir=config.calibration_dir,
-            port=config.right_arm_config.port,
-            disable_torque_on_disconnect=config.right_arm_config.disable_torque_on_disconnect,
-            max_relative_target=config.right_arm_config.max_relative_target,
-            use_degrees=config.right_arm_config.use_degrees,
-            cameras=config.right_arm_config.cameras,
+            port=right_source.port,
+            disable_torque_on_disconnect=right_source.disable_torque_on_disconnect,
+            max_relative_target=right_source.max_relative_target,
+            use_degrees=right_source.use_degrees,
+            cameras=right_source.cameras,
+            mirror_mode=config.mirror_mode,
         )
+
+        if config.mirror_mode:
+            logger.info(
+                f"Mirror mode: left_* -> {left_arm_config.port} ({left_arm_config.id}), "
+                f"right_* -> {right_arm_config.port} ({right_arm_config.id})"
+            )
 
         self.left_arm = SO102Follower(left_arm_config)
         self.right_arm = SO102Follower(right_arm_config)
