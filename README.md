@@ -728,6 +728,51 @@ host(`bi_so102_host.py`)는 모터 버스의 간헐 통신 실패를 두 단계�
 경고가 자주 보이면 USB 경합(카메라 3대 + 시리얼 2개가 한 허브)이나 파이의
 발열(`vcgencmd get_throttled`)을 먼저 봅니다.
 
+### 미러 모드 (팔로워가 나를 바라보게)
+
+팔로워를 리더와 마주 보게 두고 거울처럼 조종합니다. 팔로워 쪽에 `--robot.mirror_mode=true`
+하나만 더합니다. 리더와 PC(client) 명령은 그대로입니다.
+
+미러 모드는 `solution/`에만 있습니다(v1.1.0~). 수업에서 코드를 붙여넣어 만든 lerobot이나 파이에서
+쓰려면 위 rsync로 `solution/`을 덮어씁니다. 덮어쓰지 않은 곳에 이 인자를 주면 인자 오류로 멈춥니다.
+
+| 실행 | 추가 인자 |
+|------|------|
+| 파이 host (`bi_so102_host`) | `--robot.mirror_mode=true` |
+| PC (`bi_so102_client` + `bi_so102_leader`) | 없음 |
+| 유선 양팔·단팔 (`bi_so102_follower`, `so102_follower`) | `--robot.mirror_mode=true` |
+
+```bash
+# 파이 host: 평소 명령 끝에 한 줄 추가
+python -m lerobot.robots.bi_so102_follower.bi_so102_host \
+    --robot.id=bi_so102 \
+    --robot.left_arm_config.port=<왼팔 포트> \
+    --robot.right_arm_config.port=<오른팔 포트> \
+    --robot.cameras='...' \
+    --robot.mirror_mode=true
+```
+
+켜면 바뀌는 것:
+
+- 모터 1·5·6(`shoulder_pan`, `wrist_yaw`, `wrist_roll`)의 `drive_mode`를 **메모리에서만** 1로 바꿔
+  부호를 뒤집습니다. 캘리브레이션 파일은 바뀌지 않습니다. 도 단위(기본)에서도 적용됩니다.
+- 양팔은 좌우를 교체합니다. 리더 왼팔(`left_*`)이 팔로워 오른팔을, 리더 오른팔이 팔로워 왼팔을
+  움직입니다. 포트와 캘리브레이션 파일(`<id>_right.json`)이 짝으로 함께 바뀌므로 다시
+  캘리브레이션할 필요가 없습니다.
+- 시작 로그에 `Mirror mode: left_* -> <포트> (<id>_right)` 줄이 찍힙니다.
+
+주의:
+
+- 반전은 캘리브레이션 범위 중앙을 기준으로 합니다. 시작 전에 리더를 팔로워와 마주 보는 자세로
+  맞춰 둡니다. 다르면 첫 명령에서 팔이 크게 움직입니다.
+- 미러로 녹화한 데이터는 1·5·6번 부호와 좌우(`left_*` = 팔로워 오른팔)가 평소와 반대입니다.
+  추론(`lerobot-record --policy.path=...`, `lerobot-rollout`)도 `--robot.mirror_mode=true`로
+  실행하고, 평소 데이터와 한 데이터셋에 섞지 않습니다.
+- 최상위 `--robot.cameras`의 이름은 바뀌지 않습니다. `cam_wrist_left`는 계속 물리적 왼팔의
+  카메라이고, 미러에서는 이 팔이 `right_*`입니다. 팔별 카메라(`--robot.left_arm_config.cameras`)는
+  팔과 함께 교체됩니다.
+- 이 레포의 실행 코드(`src/leader_teleop/`)에는 적용되지 않습니다.
+
 ## 안전 주의
 
 - 실행 전 로봇 주변을 치웁니다. `Ctrl+C`를 바로 누를 수 있게 터미널에
