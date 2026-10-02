@@ -1,5 +1,6 @@
 import logging
 import time
+from dataclasses import replace
 from functools import cached_property
 from typing import Final
 
@@ -19,6 +20,37 @@ from .config_so102_follower import SO102FollowerRobotConfig
 logger = logging.getLogger(__name__)
 
 BUS_NUM_RETRY: Final = 2
+# 미러 모드에서 부호를 뒤집는 관절 (모터 1, 5, 6)
+MIRROR_MOTORS: Final = ("shoulder_pan", "wrist_yaw", "wrist_roll")
+
+
+class MirrorFeetechMotorsBus(FeetechMotorsBus):
+    """도 단위에서도 MIRROR_MOTORS의 drive_mode를 적용하는 Feetech 버스 (미러 모드 전용).
+
+    lerobot은 -100~100, 0~100 단위에서만 drive_mode로 부호를 뒤집고 도 단위에서는 무시한다.
+    여기서는 도 단위도 같은 기준(캘리브레이션 범위 중앙)으로 뒤집는다. 대상을 MIRROR_MOTORS로
+    한정해, 파일에 다른 관절의 drive_mode가 1로 남아 있어도 미러 모드가 그 관절을 바꾸지 않게 한다.
+    """
+
+    def _is_reversed_degrees(self, id_: int) -> bool:
+        motor = self._id_to_name(id_)
+        calibration = self.calibration.get(motor)
+        return (
+            motor in MIRROR_MOTORS
+            and calibration is not None
+            and bool(calibration.drive_mode)
+            and self.motors[motor].norm_mode is MotorNormMode.DEGREES
+        )
+
+    def _normalize(self, ids_values: dict[int, int]) -> dict[int, float]:
+        normalized_values = super()._normalize(ids_values)
+        return {
+            id_: -val if self._is_reversed_degrees(id_) else val for id_, val in normalized_values.items()
+        }
+
+    def _unnormalize(self, ids_values: dict[int, float]) -> dict[int, int]:
+        ids_values = {id_: -val if self._is_reversed_degrees(id_) else val for id_, val in ids_values.items()}
+        return super()._unnormalize(ids_values)
 
 
 class SO102Follower(Robot):
@@ -29,7 +61,8 @@ class SO102Follower(Robot):
         super().__init__(config)
         self.config = config
         norm_mode_body = MotorNormMode.DEGREES if config.use_degrees else MotorNormMode.RANGE_M100_100
-        self.bus = FeetechMotorsBus(
+        bus_class = MirrorFeetechMotorsBus if config.mirror_mode else FeetechMotorsBus
+        self.bus = bus_class(
             port=self.config.port,
             motors={
                 "shoulder_pan": Motor(1, "sts3215", norm_mode_body),
@@ -79,6 +112,9 @@ class SO102Follower(Robot):
             )
             self.calibrate()
 
+        if self.config.mirror_mode:
+            self._apply_mirror_drive_mode()
+
         for cam in self.cameras.values():
             cam.connect()
 
@@ -106,6 +142,19 @@ class SO102Follower(Robot):
                     self.bus.write("Max_Torque_Limit", motor, 500)
                     self.bus.write("Protection_Current", motor, 250)
                     self.bus.write("Overload_Torque", motor, 25)
+
+    def _apply_mirror_drive_mode(self) -> None:
+        """MIRROR_MOTORS의 drive_mode를 1로 바꾼 복사본으로 버스 캘리브레이션을 교체한다.
+
+        self.calibration(파일에 저장되는 원본)은 건드리지 않으므로 캘리브레이션 파일은 바뀌지 않는다.
+        """
+        self.bus.calibration = {
+            motor: replace(calibration, drive_mode=1) if motor in MIRROR_MOTORS else calibration
+            for motor, calibration in self.bus.calibration.items()
+        }
+        logger.info(
+            f"{self} mirror mode: drive_mode=1 on {', '.join(MIRROR_MOTORS)} (calibration file unchanged)"
+        )
 
     def setup_motors(self) -> None:
         for motor in reversed(self.bus.motors):

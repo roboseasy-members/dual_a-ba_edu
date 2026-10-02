@@ -14,6 +14,9 @@ class BiSO102FollowerConfig(RobotConfig):
 
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
 
+    # 두 팔에 mirror_mode를 켜고 좌우를 교체한다 (left_* 키가 팔로워 오른팔을 움직인다)
+    mirror_mode: bool = False
+
 
 @dataclass
 class BiSO102HostConfig:
