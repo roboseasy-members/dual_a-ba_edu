@@ -728,6 +728,45 @@ host(`bi_so102_host.py`)는 모터 버스의 간헐 통신 실패를 두 단계�
 경고가 자주 보이면 USB 경합(카메라 3대 + 시리얼 2개가 한 허브)이나 파이의
 발열(`vcgencmd get_throttled`)을 먼저 봅니다.
 
+### 작업 지시를 반복 입력하는 추론 (interactive)
+
+위에서 `solution/`을 복사한 뒤, LeRobot 저장소 최상위에서 다음 명령으로 설치를 확인합니다.
+도움말은 모델을 읽거나 로봇에 연결하지 않습니다. 별도 명령 등록이나 재설치는 필요 없습니다.
+실행 파일은 `scripts/lerobot_interactive.py`, 설정은 `rollout/interactive_config.py`,
+전략은 `rollout/strategies/edu_interactive.py`에 있습니다.
+
+```bash
+python -m lerobot.scripts.lerobot_interactive --help
+```
+
+파이에 `solution/`의 SO-102 host를 띄우고 PC에서 SmolVLA를 실행하는 예시입니다.
+`PI_IP`와 `POLICY_PATH`는 각각 파이 주소와 학습한 체크포인트의 `pretrained_model` 경로로 설정하세요.
+카메라 이름과 해상도는 host에, `--rename_map`은 학습 때 사용한 매핑에 맞춥니다.
+
+```bash
+python -m lerobot.scripts.lerobot_interactive \
+    --robot.type=bi_so102_client --robot.remote_ip="$PI_IP" \
+    --robot.cameras='{"cam_top":{"type":"opencv","index_or_path":0,"width":640,"height":480,"fps":30},"cam_wrist_left":{"type":"opencv","index_or_path":0,"width":640,"height":480,"fps":30},"cam_wrist_right":{"type":"opencv","index_or_path":0,"width":640,"height":480,"fps":30}}' \
+    --policy.path="$POLICY_PATH" --device=cuda --fps=10 \
+    --rename_map='{"observation.images.cam_top":"observation.images.camera1","observation.images.cam_wrist_left":"observation.images.camera2","observation.images.cam_wrist_right":"observation.images.camera3"}' \
+    --strategy.task_timeout=60
+```
+
+모델을 한 번 불러온 뒤 프롬프트에 작업 문장을 한 줄씩 입력합니다. 예를 들어
+`Put the red die on the yellow cloth.`를 입력하고, 다음 프롬프트에서 파란 주사위를 지시할 수 있습니다.
+문장에 따라 동작이 달라지려면 해당 작업을 학습한 언어 조건부 정책이 필요합니다.
+
+작업은 제한 시간이 지나거나 `Ctrl+C`를 누르면 끝납니다. 기본 설정에서는 팔이 시작 자세를
+벗어났다가 돌아와 멈춰도 작업을 끝냅니다. 이 판정을 끄려면 `--strategy.success_detection=false`를 사용하세요.
+작업이 끝나면 로봇에 세션 시작 자세로 복귀하는 명령을 보낸 뒤 새 입력을 기다립니다. **작업 중 `Ctrl+C` 뒤에도 복귀 이동이 이어집니다.**
+추론 호출이 오래 걸리면 중단 처리도 늦어지므로 비상 정지에는 장비의 정지 수단을 사용하세요.
+자동 복귀를 끄려면 `--return_to_initial_position=false`를 사용하세요.
+입력 대기 중 `Ctrl+C` 또는 `Ctrl+D`를 누르면 PC 세션이 종료됩니다. 파이 host는 마지막 자세를 유지합니다.
+`--duration`을 설정해도 입력 대기 중에는 다음 입력 또는 종료 신호를 받을 때 세션 시간을 확인합니다.
+
+[rebot_lerobot의 독립형 interactive 구현](https://github.com/roboseasy-members/rebot_lerobot/tree/05738aef4df77593e0b21438aa73bcc849b6732e/src/lerobot_robot_rebot/rollout)을
+LeRobot v0.6.0의 모듈 경로와 양팔 SO-102의 관절 이름에 맞춰 옮겼습니다.
+
 ### 미러 모드 (팔로워가 나를 바라보게)
 
 팔로워를 리더와 마주 보게 두고 거울처럼 조종합니다. 팔로워 쪽에 `--robot.mirror_mode=true`
